@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()  # .env file se API key load karo
+
 from flask import Flask, render_template, request, jsonify
 from google import genai
 from google.genai import types
