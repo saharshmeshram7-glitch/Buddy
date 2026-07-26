@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ project_name }} - Your AI Best Friend</title>
+    <title>Buddy - Your AI Best Friend</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -642,6 +642,9 @@
 </div>
 
 <script>
+    // ── Backend URL (Render deployment) ──────────────────────────────────────
+    const BACKEND_URL = 'https://buddy-1-r2o5.onrender.com';
+
     const chatArea = document.getElementById('chatArea');
     const micBtn = document.getElementById('micBtn');
     const statusLabel = document.getElementById('statusLabel');
@@ -878,7 +881,7 @@
         statusLabel.innerText = `${bName} is thinking... 💭`;
 
         try {
-            const response = await fetch('/api/chat', {
+            const response = await fetch(BACKEND_URL + '/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -948,7 +951,7 @@
     async function clearChatHistory() {
         if (!confirm("Clear your conversation history with Buddy?")) return;
         try {
-            await fetch('/api/clear', { method: 'POST' });
+            await fetch(BACKEND_URL + '/api/clear', { method: 'POST' });
             const bName = userProfile.buddyName || 'Buddy';
             const uName = userProfile.userName || 'Friend';
             chatArea.innerHTML = `
