@@ -93,18 +93,11 @@ def chat():
             temperature=0.8,
         )
 
-        try:
-            response = get_client().models.generate_content(
-                model="gemini-2.5-flash",
-                contents=chat_history,
-                config=config
-            )
-        except Exception:
-            response = get_client().models.generate_content(
-                model="gemini-1.5-flash",
-                contents=chat_history,
-                config=config
-            )
+        response = get_client().models.generate_content(
+            model="gemini-3.6-flash",
+            contents=chat_history,
+            config=config
+        )
 
         bot_reply = response.text.strip()
         chat_history.append({"role": "model", "parts": [{"text": bot_reply}]})
@@ -112,8 +105,8 @@ def chat():
         return jsonify({"reply": bot_reply, "user_name": user_name, "buddy_name": buddy_name})
 
     except Exception as e:
-        print("Backend Error:", e)
-        return jsonify({"error": "Failed to generate AI response."}), 500
+        print("Backend Error:", str(e))
+        return jsonify({"error": f"Failed to generate AI response: {str(e)}"}), 500
 
 # ── Local dev ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
