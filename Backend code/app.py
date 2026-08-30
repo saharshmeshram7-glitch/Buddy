@@ -8,7 +8,15 @@ from google import genai
 from google.genai import types
 
 app = Flask(__name__)
-CORS(app)  # Vercel frontend ko allow karo
+# Enable CORS for all routes and origins
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, DELETE, PUT'
+    return response
 
 # ── Gemini client (lazy init) ───────────────────────────────────────────────
 _client = None
@@ -47,19 +55,26 @@ Guidelines:
 chat_history = []
 
 # ── Health check ────────────────────────────────────────────────────────────
-@app.route("/")
+@app.route("/", methods=["GET", "OPTIONS"])
 def health():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
     return jsonify({"status": "Buddy AI backend is running! 🚀"})
 
 # ── API Routes ───────────────────────────────────────────────────────────────
-@app.route("/api/clear", methods=["POST"])
+@app.route("/api/clear", methods=["POST", "OPTIONS"])
 def clear_chat():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
     global chat_history
     chat_history = []
     return jsonify({"status": "cleared", "message": "Chat history reset!"})
 
-@app.route("/api/chat", methods=["POST"])
+@app.route("/api/chat", methods=["POST", "OPTIONS"])
 def chat():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     global chat_history
     data         = request.get_json() or {}
     user_message = data.get("message", "").strip()
@@ -78,11 +93,18 @@ def chat():
             temperature=0.8,
         )
 
-        response = get_client().models.generate_content(
-            model="gemini-flash-latest",
-            contents=chat_history,
-            config=config
-        )
+        try:
+            response = get_client().models.generate_content(
+                model="gemini-2.5-flash",
+                contents=chat_history,
+                config=config
+            )
+        except Exception:
+            response = get_client().models.generate_content(
+                model="gemini-1.5-flash",
+                contents=chat_history,
+                config=config
+            )
 
         bot_reply = response.text.strip()
         chat_history.append({"role": "model", "parts": [{"text": bot_reply}]})
