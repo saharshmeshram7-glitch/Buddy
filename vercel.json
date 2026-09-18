@@ -2,11 +2,27 @@
   "version": 2,
   "builds": [
     {
-      "src": "Frontend Code/index.html",
+      "src": "Frontend Code/**",
       "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/manifest.json",
+      "dest": "Frontend Code/manifest.json"
+    },
+    {
+      "src": "/sw.js",
+      "dest": "Frontend Code/sw.js"
+    },
+    {
+      "src": "/icon-192.jpg",
+      "dest": "Frontend Code/icon-192.jpg"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "dest": "Frontend Code/icon-512.jpg"
+    },
     {
       "src": "/(.*)",
       "dest": "Frontend Code/index.html"

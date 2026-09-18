@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Buddy - Your AI Best Friend</title>
+
+    <!-- PWA Metadata & Icons -->
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Buddy AI">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.jpg">
+    <link rel="icon" type="image/jpeg" href="icon-192.jpg">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -603,6 +614,7 @@
             </div>
         </div>
         <div class="header-actions">
+            <button class="icon-btn" id="pwaInstallBtn" style="display: none;" onclick="installPWA()" title="Install App">📲</button>
             <button class="icon-btn" onclick="openProfileModal()" title="Edit Profile & Buddy Name">👤</button>
             <button class="icon-btn" id="ttsToggleBtn" onclick="toggleTTS()" title="Toggle Voice Output">🔊</button>
             <button class="icon-btn" onclick="clearChatHistory()" title="Clear Chat">🗑️</button>
@@ -642,6 +654,40 @@
 </div>
 
 <script>
+    // ── Service Worker & PWA Installation ────────────────────────────────────
+    let deferredPrompt = null;
+    const pwaInstallBtn = document.getElementById('pwaInstallBtn');
+
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Buddy SW registered successfully!', reg))
+                .catch(err => console.error('Buddy SW registration failed:', err));
+        });
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        if (pwaInstallBtn) pwaInstallBtn.style.display = 'inline-flex';
+    });
+
+    async function installPWA() {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            console.log('User installed Buddy AI PWA');
+        }
+        deferredPrompt = null;
+        if (pwaInstallBtn) pwaInstallBtn.style.display = 'none';
+    }
+
+    window.addEventListener('appinstalled', () => {
+        if (pwaInstallBtn) pwaInstallBtn.style.display = 'none';
+        console.log('Buddy AI PWA installed!');
+    });
+
     // ── Backend URL (Render deployment) ──────────────────────────────────────
     const BACKEND_URL = 'https://buddy-1-r2o5.onrender.com';
 
@@ -660,6 +706,7 @@
     };
     let selectedAvatar = '🤗';
     let availableVoices = [];
+    let sessionHistory = [];
 
     let isListening = false;
     let ttsEnabled = true;
@@ -876,6 +923,7 @@
         if (chipsContainer) chipsContainer.style.display = 'none';
 
         appendBubble(messageText, 'user');
+        sessionHistory.push({ role: 'user', text: messageText });
         showTypingIndicator();
         const bName = userProfile.buddyName || 'Buddy';
         statusLabel.innerText = `${bName} is thinking... 💭`;
@@ -887,7 +935,8 @@
                 body: JSON.stringify({ 
                     message: messageText,
                     user_name: userProfile.userName || 'Friend',
-                    buddy_name: userProfile.buddyName || 'Buddy'
+                    buddy_name: userProfile.buddyName || 'Buddy',
+                    history: sessionHistory.slice(-10)
                 })
             });
 
@@ -895,16 +944,20 @@
             removeTypingIndicator();
 
             if (data.reply) {
+                sessionHistory.push({ role: 'model', text: data.reply });
                 appendBubble(data.reply, 'bot');
                 if (ttsEnabled) speakText(data.reply);
                 statusLabel.innerText = "Tap mic or type to respond";
             } else {
-                statusLabel.innerText = "Oops, couldn't get a response. Try again!";
+                const errMsg = data.error || "Server is busy right now. Try sending again!";
+                statusLabel.innerText = errMsg;
+                appendBubble("⚠️ " + errMsg, 'bot');
             }
         } catch (err) {
             removeTypingIndicator();
             console.error(err);
-            statusLabel.innerText = "Connection error. Is the server running?";
+            statusLabel.innerText = "Connection error. Please try again!";
+            appendBubble("⚠️ Connection error. Server might be warming up, please try again in a moment.", 'bot');
         }
     }
 
@@ -950,21 +1003,22 @@
 
     async function clearChatHistory() {
         if (!confirm("Clear your conversation history with Buddy?")) return;
+        sessionHistory = [];
         try {
             await fetch(BACKEND_URL + '/api/clear', { method: 'POST' });
-            const bName = userProfile.buddyName || 'Buddy';
-            const uName = userProfile.userName || 'Friend';
-            chatArea.innerHTML = `
-                <div class="msg-wrapper bot">
-                    <div class="msg bot-msg">Fresh start ${uName}! ${userProfile.buddyAvatar || '🤗'} What's on your mind right now?</div>
-                    <div class="msg-time">${getCurrentTime()}</div>
-                </div>
-            `;
-            if (chipsContainer) chipsContainer.style.display = 'flex';
-            statusLabel.innerText = "Chat cleared! Start talking whenever you're ready.";
         } catch (err) {
             console.error("Clear chat error:", err);
         }
+        const bName = userProfile.buddyName || 'Buddy';
+        const uName = userProfile.userName || 'Friend';
+        chatArea.innerHTML = `
+            <div class="msg-wrapper bot">
+                <div class="msg bot-msg">Fresh start ${uName}! ${userProfile.buddyAvatar || '🤗'} What's on your mind right now?</div>
+                <div class="msg-time">${getCurrentTime()}</div>
+            </div>
+        `;
+        if (chipsContainer) chipsContainer.style.display = 'flex';
+        statusLabel.innerText = "Chat cleared! Start talking whenever you're ready.";
     }
 
     function speakText(text) {

@@ -1,6 +1,11 @@
 import os
+import time
 from dotenv import load_dotenv
-load_dotenv()  # local .env file se keys load karo
+
+env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path)
+load_dotenv()
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -51,8 +56,38 @@ Guidelines:
 8. Use clear, standard spellings for words and avoid elongated letters so text-to-speech engines pronounce every word clearly.
 """
 
-# ── In-memory chat history ──────────────────────────────────────────────────
-chat_history = []
+# ── Gemini generation with model fallback & retry ──────────────────────────
+FALLBACK_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
+]
+
+def generate_with_fallback(contents, config):
+    client = get_client()
+    last_exception = None
+
+    for model_name in FALLBACK_MODELS:
+        for attempt in range(2):  # Retry up to 2 times per model
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=config
+                )
+                if response and response.text:
+                    return response.text.strip(), model_name
+            except Exception as e:
+                err_msg = str(e)
+                print(f"[Model Retry] Attempt {attempt+1} failed for model '{model_name}': {err_msg}")
+                last_exception = e
+                if "503" in err_msg or "429" in err_msg or "UNAVAILABLE" in err_msg:
+                    time.sleep(1)
+                else:
+                    break  # Switch to next fallback model on hard errors
+
+    raise last_exception or Exception("All Gemini models failed to respond.")
 
 # ── Health check ────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET", "OPTIONS"])
@@ -66,8 +101,6 @@ def health():
 def clear_chat():
     if request.method == "OPTIONS":
         return jsonify({"status": "ok"}), 200
-    global chat_history
-    chat_history = []
     return jsonify({"status": "cleared", "message": "Chat history reset!"})
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])
@@ -75,17 +108,29 @@ def chat():
     if request.method == "OPTIONS":
         return jsonify({"status": "ok"}), 200
 
-    global chat_history
-    data         = request.get_json() or {}
+    data = request.get_json() or {}
     user_message = data.get("message", "").strip()
-    user_name    = data.get("user_name", "").strip() or "Friend"
-    buddy_name   = data.get("buddy_name", "").strip() or "Buddy"
+    user_name = data.get("user_name", "").strip() or "Friend"
+    buddy_name = data.get("buddy_name", "").strip() or "Buddy"
+    incoming_history = data.get("history", [])
 
     if not user_message:
         return jsonify({"error": "Message cannot be empty."}), 400
 
     try:
-        chat_history.append({"role": "user", "parts": [{"text": user_message}]})
+        # Build contents from incoming_history or fallback to user_message
+        contents = []
+        if isinstance(incoming_history, list) and len(incoming_history) > 0:
+            # Take only last 10 messages to keep context size manageable and fast
+            recent_history = incoming_history[-10:]
+            for item in recent_history:
+                role = item.get("role")
+                text = item.get("text", "")
+                if role in ["user", "model"] and text:
+                    contents.append({"role": role, "parts": [{"text": text}]})
+
+        # Append current user message
+        contents.append({"role": "user", "parts": [{"text": user_message}]})
 
         system_prompt = get_system_prompt(user_name=user_name, buddy_name=buddy_name)
         config = types.GenerateContentConfig(
@@ -93,16 +138,14 @@ def chat():
             temperature=0.8,
         )
 
-        response = get_client().models.generate_content(
-            model="gemini-3.6-flash",
-            contents=chat_history,
-            config=config
-        )
+        bot_reply, used_model = generate_with_fallback(contents=contents, config=config)
 
-        bot_reply = response.text.strip()
-        chat_history.append({"role": "model", "parts": [{"text": bot_reply}]})
-
-        return jsonify({"reply": bot_reply, "user_name": user_name, "buddy_name": buddy_name})
+        return jsonify({
+            "reply": bot_reply,
+            "user_name": user_name,
+            "buddy_name": buddy_name,
+            "model_used": used_model
+        })
 
     except Exception as e:
         print("Backend Error:", str(e))
