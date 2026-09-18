@@ -59,9 +59,9 @@ Guidelines:
 # ── Gemini generation with model fallback & retry ──────────────────────────
 FALLBACK_MODELS = [
     "gemini-3.6-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
+    "gemini-3.8-flash",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest"
 ]
 
 def generate_with_fallback(contents, config):
@@ -69,7 +69,7 @@ def generate_with_fallback(contents, config):
     last_exception = None
 
     for model_name in FALLBACK_MODELS:
-        for attempt in range(2):  # Retry up to 2 times per model
+        for attempt in range(3):  # Retry up to 3 times per model
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -83,9 +83,9 @@ def generate_with_fallback(contents, config):
                 print(f"[Model Retry] Attempt {attempt+1} failed for model '{model_name}': {err_msg}")
                 last_exception = e
                 if "503" in err_msg or "429" in err_msg or "UNAVAILABLE" in err_msg:
-                    time.sleep(1)
+                    time.sleep(0.5 * (attempt + 1))
                 else:
-                    break  # Switch to next fallback model on hard errors
+                    break  # Switch to next fallback model on 404 or other hard errors
 
     raise last_exception or Exception("All Gemini models failed to respond.")
 
